@@ -1,95 +1,78 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+"use client"
 
-export default function Home() {
+import { useEffect, useRef, useState } from 'react'
+import styles from './page.module.css'
+
+const THRESHOLD = 0.1 // 音量の閾値
+const SCALE_FACTOR = 5000 // 比例定数
+
+export default function SoundVisualizer() {
+  const [radius, setRadius] = useState(0)
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const analyserRef = useRef<AnalyserNode | null>(null)
+  const integralRef = useRef(0)
+
+  const resetVisualization = () => {
+    integralRef.current = 0
+    setRadius(0)
+  }
+
+  useEffect(() => {
+    let animationFrameId: number
+
+    const initAudio = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        audioContextRef.current = new AudioContext()
+        analyserRef.current = audioContextRef.current.createAnalyser()
+        const source = audioContextRef.current.createMediaStreamSource(stream)
+        source.connect(analyserRef.current)
+
+        const updateRadius = () => {
+          if (analyserRef.current) {
+            const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount)
+            analyserRef.current.getByteFrequencyData(dataArray)
+            const average = dataArray.reduce((sum, value) => sum + value, 0) / dataArray.length
+            const normalizedVolume = average / 255
+
+            if (normalizedVolume > THRESHOLD) {
+              integralRef.current += normalizedVolume - THRESHOLD
+              const newRadius = Math.sqrt(integralRef.current * SCALE_FACTOR / Math.PI)
+              setRadius(newRadius)
+            }
+            // 閾値以下の場合は何もしない（現在のサイズを維持）
+          }
+          animationFrameId = requestAnimationFrame(updateRadius)
+        }
+
+        updateRadius()
+      } catch (error) {
+        console.error('マイクへのアクセスに失敗しました:', error)
+      }
+    }
+
+    initAudio()
+
+    return () => {
+      cancelAnimationFrame(animationFrameId)
+      if (audioContextRef.current) {
+        audioContextRef.current.close()
+      }
+    }
+  }, [])
+
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol>
-          <li>
-            Get started by editing <code>app/page.tsx</code>.
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
-
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.secondary}
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className={styles.footer}>
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+    <div className={styles.container}>
+      <div
+        className={styles.circle}
+        style={{
+          width: `${radius * 2}px`,
+          height: `${radius * 2}px`
+        }}
+      />
+      <button className={styles.resetButton} onClick={resetVisualization}>
+        リセット
+      </button>
     </div>
-  );
+  )
 }
